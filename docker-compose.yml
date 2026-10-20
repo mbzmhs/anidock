@@ -1,0 +1,26 @@
+# 本地/单机部署示例：
+#   docker compose up -d --build
+# 数据落在 ./data 与 ./media，升级镜像（重新 build + up -d）不丢数据。
+services:
+  anidock:
+    build:
+      # 版本号注入（仓库根 VERSION 文件）：
+      #   VERSION=$(cat VERSION) docker compose up -d --build
+      args:
+        VERSION: ${VERSION:-dev}
+    # 生产建议固定版本标签（如 anidock:v0.1.0）便于回滚；latest 适合始终追新
+    image: anidock:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # 可选：容器创建时用 env 指定；不指定则首次打开网页走「初始化」页设置
+      # ADMIN_PASSWORD: "your-admin-password"
+      # VISITOR_PASSWORD: ""            # 留空 = 站点公开
+      # BANGUMI_BASE_URL: https://api.bgm.tv
+      # BANGUMI_TOKEN: ""
+      # MIRROR_MAX_SIZE: 4GiB
+      # FETCH_INTERVAL: 3m
+    volumes:
+      - ./data:/app/data # 数据库 + 资源镜像文件
+      - ./media:/app/media # 封面/图片
+    restart: unless-stopped

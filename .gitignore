@@ -1,0 +1,29 @@
+# 系统文件
+.DS_Store
+
+# 本地配置与凭据（.env 含 Bangumi token / 后台口令，严禁提交）
+.env
+backend/.env
+*.token
+token.txt
+
+# 运行时数据（个人数据：数据库内含登录口令/token，media/mirror 为下载的图片与资源文件）
+backend/data/
+backend/media/
+frontend/data/
+frontend/media/
+
+# 构建产物与依赖
+frontend/node_modules/
+frontend/dist/
+
+# 日志与临时文件
+*.log
+/tmp/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 本地设计文档（不进开源仓库）
+DESIGN.md

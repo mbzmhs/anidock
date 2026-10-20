@@ -1,0 +1,11 @@
+# 保持构建上下文小而干净
+.git
+.DS_Store
+*.log
+backend/data
+backend/media
+backend/.env
+.env
+frontend/node_modules
+frontend/dist
+docker-compose.yml
