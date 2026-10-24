@@ -38,9 +38,18 @@ function fmtEp(x) {
   if (x == null) return '—'
   return Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10)
 }
-// 排序键：合集的 best.episode 是区间起点，直接参与降序；无集数垫底
-function epSortKey(r) {
-  return r?.episode ?? -1
+// 行排序：单集按集号降序；合集（episode_to 非空）不参与集号排序，
+// 固定排在全部单集之后（按起点、终点升序）——否则 "1~14 合集" 会插在 1 和 2 之间
+function epRowCompare(a, b) {
+  const ra = a.best, rb = b.best
+  const aCol = ra?.episode_to != null, bCol = rb?.episode_to != null
+  if (aCol && bCol) {
+    if (ra.episode !== rb.episode) return ra.episode - rb.episode
+    return ra.episode_to - rb.episode_to
+  }
+  if (aCol) return 1
+  if (bCol) return -1
+  return (rb?.episode ?? -1) - (ra?.episode ?? -1)
 }
 function epCell(r) {
   if (!r) return '—'
@@ -215,7 +224,7 @@ function copyRss(e) {
           </thead>
           <tbody>
             <template
-              v-for="e in [...episodes].sort((a, b) => epSortKey(b.best) - epSortKey(a.best))"
+              v-for="e in [...episodes].sort(epRowCompare)"
               :key="e.best?.id"
             >
               <tr>
