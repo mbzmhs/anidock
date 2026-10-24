@@ -9,7 +9,7 @@ import (
 	"anidock/backend/internal/model"
 )
 
-// TestSeasonSet 标题季数提取（中/英/罗马数字、多季合集）。
+// TestSeasonSet 标题季数提取（中/英/罗马数字、Part、多季合集）。
 func TestSeasonSet(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -23,37 +23,61 @@ func TestSeasonSet(t *testing.T) {
 		{"番剧名 第10话 1080p", map[int]bool{}}, // 集数不是季数
 		{"番剧A 第二季 Episode 1", map[int]bool{2: true}},
 		{"某番 S11 合集 第一季~第三季", map[int]bool{1: true, 3: true, 11: true}}, // 区间只含两端写法
+		{"番剧E Ⅱ 第01话", map[int]bool{2: true}},                              // 罗马数字
+		{"番剧F 第二部 05", map[int]bool{2: true}},                             // "部"
+		{"番剧G Part 2 - 03", map[int]bool{2: true}},                          // Part
+		{"番剧H 第2季", map[int]bool{2: true}},                                 // 数字形式季词
 	}
 	for _, c := range cases {
-		got := seasonSet(c.in)
+		got := SeasonSet(c.in)
 		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("seasonSet(%q) = %v, want %v", c.in, got, c.want)
+			t.Errorf("SeasonSet(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }
 
-// TestSeasonConflict per-show 源的旧季文件拦截。
+// TestSeasonConflict per-show 源的旧季文件拦截（含无季词条目的时间兜底）。
 func TestSeasonConflict(t *testing.T) {
 	s3 := &model.Anime{
 		Title:     "番剧D 第三季",
 		TitleOrig: "番剧D 第三季",
 		Aliases:   []string{"Show D Season 3"},
+		Year:      2026,
+		Quarter:   4,
 	}
 	s1 := &model.Anime{Title: "番剧A"} // S1 无季词 → 不过滤
+	// 2026 Q4 播出窗口内的时间点
+	inWin := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	// 早于播出窗口起点（2025-12-10-21d 之前）的旧季时间
+	preWin := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	cases := []struct {
 		anime *model.Anime
 		title string
+		pub   time.Time
 		want  bool
 	}{
-		{s3, "[字幕组B] 番剧D 第二季 - 03 [1080P]", true},  // 旧季文件 → 拦
-		{s3, "[字幕组B] 番剧D 第三季 - 03 [1080P]", false}, // 本季 → 放行
-		{s3, "[字幕组B] 番剧D 第三季 - 12.5 [1080P]", false},
-		{s1, "番剧A 第二季 - 01 [1080P]", false}, // S1 番剧无季词 → 不拦
-		{s3, "[X] 他番 第二季 - 01", true}, // 季数冲突一律拦（组名不符的条目另有归属逻辑兜底）
+		{s3, "[字幕组B] 番剧D 第二季 - 03 [1080P]", inWin, true},  // 旧季文件 → 拦
+		{s3, "[字幕组B] 番剧D 第三季 - 03 [1080P]", inWin, false}, // 本季 → 放行
+		{s3, "[字幕组B] 番剧D 第三季 - 12.5 [1080P]", inWin, false},
+		{s1, "番剧A 第二季 - 01 [1080P]", inWin, false}, // S1 番剧无季词 → 不拦
+		{s3, "[X] 他番 第二季 - 01", inWin, true}, // 季数冲突一律拦（组名不符的条目另有归属逻辑兜底）
+
+		// 跨季合集包：条目含 ≥2 个不同季数 → 拦
+		{s3, "[字幕组B] 番剧D 第一季+第二季 合集 [1080P]", inWin, true},
+		{s3, "[字幕组B] 番剧D S1-S3 全集", inWin, true},
+
+		// 无季词条目 + 番剧显式第 3 季：时间兜底
+		{s3, "[字幕组B] 番剧D - 03 [1080P]", preWin, true},  // 开播窗口前发布 → 旧季，拦
+		{s3, "[字幕组B] 番剧D - 13 [1080P]", inWin, false},  // 接续编号的本季条目（窗口内）→ 放行
+		{s3, "[字幕组B] 番剧D - 03 [1080P]", inWin, false},  // 窗口内的本季单集 → 放行
+		{s3, "[字幕组B] 番剧D BDRip 1080p", inWin, true},    // 播出期内的无季词 BDrip → 旧季 BD，拦
+		{s3, "[字幕组B] 番剧D - 03 [1080P]", time.Time{}, false}, // 无发布时间 → 不拦（信息不足）
+		{s1, "番剧A - 01 [1080P]", preWin, false},           // S1 番剧不启用时间兜底
 	}
 	for _, c := range cases {
-		if got := seasonConflict(c.anime, c.title); got != c.want {
-			t.Errorf("seasonConflict(%+v, %q) = %v, want %v", c.anime.Title, c.title, got, c.want)
+		if got := seasonConflict(c.anime, c.title, c.pub, now); got != c.want {
+			t.Errorf("seasonConflict(%q, %q, pub=%s) = %v, want %v", c.anime.Title, c.title, c.pub.Format("2006-01-02"), got, c.want)
 		}
 	}
 }

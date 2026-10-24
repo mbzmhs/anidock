@@ -66,7 +66,9 @@ function fmtTime(s) {
         <div class="info">
           <FeedBadge :name="r.feed_name" :color="r.feed_color" />
           <span class="title" :title="r.title">{{ r.title }}</span>
-          <span v-if="r.episode != null" class="dim">第 {{ r.episode }} 集</span>
+          <span v-if="r.episode != null" class="dim">
+            {{ r.episode_to != null ? `第 ${r.episode}~${r.episode_to} 集（合集）` : `第 ${r.episode} 集` }}
+          </span>
           <span v-if="r.spec" class="dim spec-chip">{{ r.spec }}</span>
           <span class="dim">{{ fmtTime(r.published_at) }}</span>
         </div>

@@ -139,15 +139,19 @@ func verifyURL(ctx context.Context, f *fetcher, site Site, t Target,
 		}
 		it := Item{
 			Title: r.Title, Link: r.Link,
-			PubTime: parsePub(r.PubDate),
-			Group:   g, Show: p.Show,
-			Episode: p.Episode, Quality: p.Quality, Spec: p.Spec,
+			PubTime:   parsePub(r.PubDate),
+			Group:     g, Show: p.Show,
+			Episode:   p.Episode, EpisodeTo: p.EpisodeTo,
+			Quality: p.Quality, Spec: p.Spec,
 		}
 		attribute(&it, t, names, consensus, now)
 		if normGroupEq(g, group) && (it.Level != "low" || it.SeasonReject) {
 			pass++
 			if it.SeasonReject {
-				continue // 旧季条目只算纯度无害，集数/示例不进本季节数集
+				continue // 旧季/跨季合集条目只算纯度无害，集数/示例不进本季节数集
+			}
+			if p.EpisodeTo != nil {
+				continue // 合集不进集数集（区间起点不是单集进度）
 			}
 			if e := intEps(p.Episode); e > 0 {
 				epGot[e] = struct{}{}

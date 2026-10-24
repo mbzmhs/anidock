@@ -56,11 +56,12 @@ type Item struct {
 	PubTime time.Time
 	Query   string // 命中它的宽搜关键词
 
-	Group   string // 制作组（标题首部 [X]）
-	Show    string // 组自己写法的番剧主干（ParseTitle 产物，保留原始繁简/大小写）
-	Episode *float64
-	Quality string
-	Spec    string
+	Group     string   // 制作组（标题首部 [X]）
+	Show      string   // 组自己写法的番剧主干（ParseTitle 产物，保留原始繁简/大小写）
+	Episode   *float64 // 集号；合集区间时为起点
+	EpisodeTo *float64 // 合集区间终点（非空 = 多文件合集种子）
+	Quality   string
+	Spec      string
 
 	// 归属判定结果
 	Score        float64

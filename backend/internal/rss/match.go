@@ -7,24 +7,15 @@ import (
 	"anidock/backend/internal/model"
 )
 
-// normalizer 归一化：小写、去空白与标点、常见繁→简替换（覆盖高频字，够用即可）。
-var tradMap = map[rune]rune{
-	'轉': '转', '剣': '剑', '転': '转', '語': '语', '話': '话',
-	'龍': '龙', '鳳': '凤', '國': '国', '學': '学', '經': '经', '濟': '济',
-	'畫': '画', '書': '书', '報': '报', '電': '电', '視': '视',
-	'網': '网', '絡': '络', '遊': '游', '戲': '戏', '戰': '战', '鬥': '斗',
-	'愛': '爱', '夢': '梦', '靈': '灵', '聖': '圣',
-	'獣': '兽', '獸': '兽', '鳥': '鸟', '華': '华', '義': '义', '傑': '杰',
-}
-
+// normalize 归一化：繁→简（OpenCC 全表，与 disc 发现侧同一份 zhconv）、
+// 全角→半角、小写、去空白与标点。旧版只有 40 字手工繁简表，
+// 含表外字（櫻/聽/緣…）的繁体标题会匹配不到简体番名。
 func normalize(s string) string {
+	s = Simplify(HalfWidth(s))
 	var b strings.Builder
 	for _, r := range strings.ToLower(s) {
 		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
 			continue
-		}
-		if r2, ok := tradMap[r]; ok {
-			r = r2
 		}
 		b.WriteRune(r)
 	}

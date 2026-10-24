@@ -2,58 +2,24 @@ package disc
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"anidock/backend/internal/rss"
 )
 
 // ---------- 归一化 ----------
 
-// Simplify 繁体→简体（先词级、后字符级）。
-func Simplify(s string) string {
-	for _, p := range tradToSimpPhrases {
-		if !strings.Contains(s, p[0]) {
-			continue
-		}
-		s = strings.ReplaceAll(s, p[0], p[1])
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if m, ok := tradToSimp[r]; ok {
-			b.WriteRune(m)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
 var reWS = regexp.MustCompile(`\s+`)
 
-// Normalize 匹配用归一：繁→简、全角→半角、小写、空白压缩。
+// Normalize 匹配用归一：繁→简（rss 包 OpenCC 全表）、全角→半角、小写、空白压缩。
 func Normalize(s string) string {
-	s = Simplify(s)
-	s = halfWidth(s)
+	s = rss.Simplify(s)
+	s = rss.HalfWidth(s)
 	s = strings.ToLower(s)
 	s = reWS.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
-}
-
-func halfWidth(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		switch {
-		case r == '\u3000':
-			r = ' '
-		case r >= 0xFF01 && r <= 0xFF5E:
-			r -= 0xFEE0
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // ---------- 名称相似度 ----------
@@ -139,28 +105,7 @@ func anchoredScore(a, b string) float64 {
 }
 
 // ---------- 播出窗口 ----------
-
-// AiringWindow 由 (年, 季度) 估算播出窗口 [开播前 21 天, 开播后 240 天]。
-// 冬番(quarter=1) 跨年前后，开播点取上年 12 月 10 日。
-func AiringWindow(year, quarter int) (time.Time, time.Time, bool) {
-	if year <= 0 {
-		return time.Time{}, time.Time{}, false
-	}
-	var start time.Time
-	switch quarter {
-	case 1:
-		start = time.Date(year-1, time.December, 10, 0, 0, 0, 0, time.UTC)
-	case 2:
-		start = time.Date(year, time.March, 1, 0, 0, 0, 0, time.UTC)
-	case 3:
-		start = time.Date(year, time.June, 1, 0, 0, 0, 0, time.UTC)
-	case 4:
-		start = time.Date(year, time.September, 1, 0, 0, 0, 0, time.UTC)
-	default:
-		return time.Time{}, time.Time{}, false
-	}
-	return start.AddDate(0, 0, -21), start.AddDate(0, 0, 240), true
-}
+// AiringWindow 实现移至 rss 包（season.go），与入库侧旧季防线共用。
 
 func windowScore(pub time.Time, ws, we time.Time) float64 {
 	if pub.IsZero() {
@@ -180,47 +125,32 @@ func windowScore(pub time.Time, ws, we time.Time) float64 {
 // 注意：标题里的「第二季 / S02 / Part 2」指的是**该番剧的续作季数**
 // （日历 Q4 但番剧 S2 是常见情况），
 // 所以必须拿"目标标题隐含的季数"对比，而不是目标 quarter。
-
-var reSeasonWord = regexp.MustCompile(`第\s*([一二三四五六七八九十]+|\d{1,2})\s*[季期]|\b(S|P)(\d{1,2})\b|season\s?(\d{1,2})|part\s?(\d{1,2})`)
-
-var cnNum = map[string]int{"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+// 季数提取统一走 rss.SeasonSet（与入库侧一致，含罗马数字/部/两/Part）。
 
 // showSeason 从名字中提取番剧季数（多个时取最大）。
 // 显式出现季词（含"第一季"）时 found=true；未出现时返回 (1, false)：
 // 默认按第一季处理，但不用该信号做否决。
-func showSeason(s string) (int, bool) {
-	max, found := 1, false
-	for _, m := range reSeasonWord.FindAllStringSubmatch(s, -1) {
-		var got int
-		switch {
-		case m[1] != "":
-			if n, ok := cnNum[m[1]]; ok {
-				got = n
-			} else {
-				got, _ = strconv.Atoi(m[1])
-			}
-		case m[3] != "":
-			got, _ = strconv.Atoi(m[3])
-		case m[4] != "":
-			got, _ = strconv.Atoi(m[4])
-		case m[5] != "":
-			got, _ = strconv.Atoi(m[5])
-		}
-		if got > 0 {
-			found = true
-			if got > max {
-				max = got
-			}
+// 名字内出现 ≥2 个不同季数（"第一季+第二季"）时 multi=true：跨季合集包，
+// 不属于任何单季，由 seasonSignal 否决。
+func showSeason(s string) (max int, found bool, multi bool) {
+	set := rss.SeasonSet(s)
+	if len(set) == 0 {
+		return 1, false, false
+	}
+	max = 1
+	for n := range set {
+		if n > max {
+			max = n
 		}
 	}
-	return max, found
+	return max, true, len(set) > 1
 }
 
 // targetShowSeason 目标隐含的番剧季数（标题+别名，缺省 1）。
 func targetShowSeason(t Target) int {
 	want := 1
 	for _, s := range append([]string{t.Title}, t.Aliases...) {
-		if n, ok := showSeason(s); ok && n > want {
+		if n, ok, _ := showSeason(s); ok && n > want {
 			want = n
 		}
 	}
@@ -245,9 +175,14 @@ func showSeasonWord(t Target) string {
 // seasonSignal 季词信号：
 //   +1  条目季词与目标季数一致（强匹配）
 //    0  条目无季词（不置否）
-//   -1  条目季词与目标不同（判定为其它季，硬否决）
+//   -1  条目季词与目标不同（判定为其它季，硬否决）；
+//       含 ≥2 个不同季数的跨季合集包（"第一季+第二季"）同样否决——
+//       取最大季数恰好等于目标季数时会被误判 +1，但它不属于任何单季
 func seasonSignal(title string, t Target) int {
-	is, iok := showSeason(title)
+	is, iok, multi := showSeason(title)
+	if multi {
+		return -1
+	}
 	if !iok {
 		return 0
 	}
@@ -315,7 +250,7 @@ func attribute(it *Item, t Target, names []string, consensus map[string]int, now
 		it.Score, it.Level = 0, "low"
 		return
 	}
-	ws, we, hasWin := AiringWindow(t.Year, t.Quarter)
+	ws, we, hasWin := rss.AiringWindow(t.Year, t.Quarter)
 
 	ns := 0.0
 	for _, n := range names {
@@ -333,7 +268,7 @@ func attribute(it *Item, t Target, names []string, consensus map[string]int, now
 		wsScore = windowScore(it.PubTime, ws, we)
 		// 目标仍在播出期内（now 早于窗口末端）时，窗口内出现的 BDrip/Blu-ray
 		// 不可能是本季内容（BD 制作周期远长于一个季度）——典型场景：旧季 BD
-		// 恰在新季播出期间上市（H-Enc S1 BD 2026-09）。完结目标则不降权。
+		// 恰在新季播出期间上市（旧季 BD 逢新季播出期发行的常见场景）。完结目标则不降权。
 		if wsScore > 0 && now.Before(we) && isBDrip(it.Title+" "+it.Spec) {
 			wsScore = 0
 		}

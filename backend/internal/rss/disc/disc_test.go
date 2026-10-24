@@ -3,6 +3,8 @@ package disc
 import (
 	"testing"
 	"time"
+
+	"anidock/backend/internal/rss"
 )
 
 func TestSimplify(t *testing.T) {
@@ -12,7 +14,7 @@ func TestSimplify(t *testing.T) {
 		"番剧C":       "番剧C", // 简体原样
 	}
 	for in, want := range cases {
-		if got := Simplify(in); got != want {
+		if got := rss.Simplify(in); got != want {
 			t.Errorf("Simplify(%q) = %q, want %q", in, got, want)
 		}
 	}
@@ -51,7 +53,7 @@ func TestNameScore(t *testing.T) {
 
 func TestAiringWindow(t *testing.T) {
 	// 2026 Q4（秋，9月开播）
-	ws, we, ok := AiringWindow(2026, 4)
+	ws, we, ok := rss.AiringWindow(2026, 4)
 	if !ok {
 		t.Fatal("Q4 窗口应可用")
 	}
@@ -68,7 +70,7 @@ func TestAiringWindow(t *testing.T) {
 		t.Errorf("2022 年条目应被窗口判 0")
 	}
 	// 冬番跨年：2026 Q1 → 2025 年 12 月开播
-	ws1, _, ok1 := AiringWindow(2026, 1)
+	ws1, _, ok1 := rss.AiringWindow(2026, 1)
 	if !ok1 || ws1.Year() != 2025 {
 		t.Errorf("2026 Q1 窗口起点应在 2025 年: %v", ws1)
 	}
@@ -92,6 +94,18 @@ func TestSeasonSignal(t *testing.T) {
 	}
 	if g := seasonSignal("番剧C 最终章 第5话", tt1); g != 0 {
 		t.Errorf("无季词 = %d, want 0", g)
+	}
+	// 跨季合集包（≥2 个不同季数）：即使最大季数与目标一致也否决
+	// （旧版取 max，"第一季+第二季" 对 S2 目标会被误判 +1）
+	if g := seasonSignal("番剧A 第一季+第二季 合集", tt); g != -1 {
+		t.Errorf("跨季合集包应否决 = %d", g)
+	}
+	if g := seasonSignal("番剧A S1-S2 全集收录", tt); g != -1 {
+		t.Errorf("S1-S2 跨季包应否决 = %d", g)
+	}
+	// 同季词重复出现不算跨季（别名列表写法）
+	if g := seasonSignal("番剧A 第二季 / Show A S2 - 03", tt); g != 1 {
+		t.Errorf("重复同季词应 +1 = %d", g)
 	}
 }
 
@@ -195,9 +209,9 @@ func TestAttributeBaseline(t *testing.T) {
 
 	// 基准场景 4：在播 S2 目标遇到 S1 的 BDrip（2026-09 上市）→ 应判 low
 	it4 := Item{
-		Title:   "[H-Enc] 番剧A / Show A (BDRip 1080p HEVC FLAC)",
+		Title:   "[Group-H] 番剧A / Show A (BDRip 1080p HEVC FLAC)",
 		Show:    "番剧A Show A",
-		Group:   "H-Enc",
+		Group:   "Group-H",
 		Spec:    "bdrip",
 		PubTime: time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC),
 	}

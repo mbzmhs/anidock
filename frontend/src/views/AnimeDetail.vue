@@ -33,6 +33,21 @@ async function load() {
 onMounted(load)
 watch(() => route.params.id, load)
 
+// 集数展示：合集（episode_to 非空）→ "X~Y 合集"；无集数 → —
+function fmtEp(x) {
+  if (x == null) return '—'
+  return Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10)
+}
+// 排序键：合集的 best.episode 是区间起点，直接参与降序；无集数垫底
+function epSortKey(r) {
+  return r?.episode ?? -1
+}
+function epCell(r) {
+  if (!r) return '—'
+  if (r.episode_to != null) return `${fmtEp(r.episode)}~${fmtEp(r.episode_to)} 合集`
+  return fmtEp(r.episode)
+}
+
 // 下载链接无感切换：有本地镜像则优先 /mirror/…，否则回退原始 download_url
 function dlHref(r) {
   if (!r) return ''
@@ -200,11 +215,11 @@ function copyRss(e) {
           </thead>
           <tbody>
             <template
-              v-for="e in [...episodes].sort((a, b) => (b.best?.episode ?? -1) - (a.best?.episode ?? -1))"
+              v-for="e in [...episodes].sort((a, b) => epSortKey(b.best) - epSortKey(a.best))"
               :key="e.best?.id"
             >
               <tr>
-                <td class="c-ep ep">{{ e.best?.episode ?? '—' }}</td>
+                <td class="c-ep ep">{{ epCell(e.best) }}</td>
                 <td>
                   <FeedBadge :name="e.best?.feed_name || e.best?.group_name" :color="e.best?.feed_color" />
                 </td>

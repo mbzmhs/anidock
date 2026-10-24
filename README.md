@@ -3,7 +3,7 @@
 > 各字幕组的番剧更新像船只进港，聚合到一个站点。
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.4-blue)](./VERSION)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue)](./VERSION)
 [![Platform](https://img.shields.io/badge/platform-Docker%20%7C%20Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](#-快速开始)
 [![Go](https://img.shields.io/badge/Go-1.27+-00ADD8)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883)](https://vuejs.org)

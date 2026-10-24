@@ -7,7 +7,9 @@ import (
 	"unicode/utf8"
 )
 
-var reSeason = regexp.MustCompile(`(?i)\s*(?:第\s*[一二三四五六七八九十]\+?\s*[季期]|\bS\d{1,2}\b|season\s?\d|part\s?\d|新篇|续篇)\s*`)
+// reSeason 季词（用于生成去季词变体）：与 rss.SeasonSet 的识别面保持一致——
+// 中文数字/阿拉伯数字的"第N季/期/部"、S/P/Season/Part、罗马数字 Ⅰ~Ⅹ、新篇/续篇。
+var reSeason = regexp.MustCompile(`(?i)\s*(?:第\s*(?:[一二两三四五六七八九十]+|\d{1,2})\s*[季期部]|\bS\d{1,2}\b|\bP\d{1,2}\b|season\s?\d|part\s?\d|[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]|新篇|续篇)\s*`)
 
 // BuildQueries 从目标番剧派生宽搜关键词集（按特异性从高到低）。
 //

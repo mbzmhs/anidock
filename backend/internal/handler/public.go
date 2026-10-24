@@ -280,15 +280,26 @@ func (p *Public) AnimeRSS(w http.ResponseWriter, r *http.Request) {
 		// 条目主链接统一指向本站详情页（阅读器"打开页面"落到我们的聚合页）；
 		// 资源方的原详情页只留在 description 里做辅助参考
 		link := sitePage
+		// 合集（episode_to 非空）→ "第 X~Y 集（合集）"；单集取 best 的集号
+		//（e.Episode 是分组键，合集/集数未知时为负值，不能直接展示）
+		from, hasFrom := 0.0, false
+		if b.Episode != nil {
+			from, hasFrom = *b.Episode, true
+		}
 		var epLabel string
-		if e.Episode > 0 {
+		switch {
+		case e.EpisodeTo != nil && hasFrom:
+			epLabel = fmt.Sprintf("第 %g~%g 集（合集）", from, *e.EpisodeTo)
+		case e.EpisodeTo == nil && e.Episode > 0:
 			epLabel = fmt.Sprintf("第 %g 集", e.Episode)
-		} else {
+		default:
 			epLabel = "集数未知"
 		}
 		// 标题只保留 作品原标题 + 集数 + 来源/画质（不再带源方的规格长尾巴与别名堆）
 		title := "《" + a.Title + "》"
-		if e.Episode > 0 {
+		if e.EpisodeTo != nil && hasFrom {
+			title += fmt.Sprintf(" 第 %g~%g 集（合集）", from, *e.EpisodeTo)
+		} else if e.Episode > 0 {
 			title += fmt.Sprintf(" 第 %g 集", e.Episode)
 		}
 		meta := strings.TrimSpace(b.FeedName + " " + b.Quality)
