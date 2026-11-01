@@ -102,6 +102,7 @@ type Release struct {
 	AnimeID     *int64  `json:"anime_id"`
 	Title       string  `json:"title"`
 	Episode     *float64 `json:"episode"`
+	EpisodeTo   *float64 `json:"episode_to,omitempty"` // 合集区间终点（非空 = 多文件合集，Episode 为起点）
 	URL         string  `json:"url"`
 	DownloadURL string  `json:"download_url"`
 	Quality     string  `json:"quality"`
@@ -122,7 +123,8 @@ type Release struct {
 
 // EpisodeView 某集的去重结果：best = 该集展示的"最优"release，alternatives = 其余源。
 type EpisodeView struct {
-	Episode      float64 `json:"episode"`
+	Episode      float64  `json:"episode"` // 单集 = 集号；合集 = -(起点*1000+终点) 的独立负键；-1 = 集数未知
+	EpisodeTo    *float64 `json:"episode_to,omitempty"` // 非空 = 合集区间终点（展示 "X~Y 集"）
 	Best         Release `json:"best"`
 	Alternatives []Release `json:"alternatives,omitempty"`
 }

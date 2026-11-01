@@ -7,7 +7,7 @@ import (
 	"anidock/backend/internal/model"
 )
 
-const releaseCols = `r.id, r.feed_id, r.anime_id, r.title, r.episode, r.url, r.download_url, r.quality,
+const releaseCols = `r.id, r.feed_id, r.anime_id, r.title, r.episode, r.episode_to, r.url, r.download_url, r.quality,
   r.spec, r.group_name, r.published_at, r.fetched_at,
   COALESCE(r.mirror_path,'') AS mirror_path, COALESCE(r.mirror_size,0) AS mirror_size,
   f.name, f.priority, COALESCE(f.color,'') AS color`
@@ -17,9 +17,9 @@ const releaseJoin = `FROM release r JOIN feed f ON f.id = r.feed_id`
 func scanRelease(row interface{ Scan(...any) error }) (*model.Release, error) {
 	var x model.Release
 	var animeID, mirrorSize sql.NullInt64
-	var episode sql.NullFloat64
+	var episode, episodeTo sql.NullFloat64
 	var url, dl, quality, spec, group, pub, fetched, mirrorPath sql.NullString
-	if err := row.Scan(&x.ID, &x.FeedID, &animeID, &x.Title, &episode, &url, &dl, &quality, &spec,
+	if err := row.Scan(&x.ID, &x.FeedID, &animeID, &x.Title, &episode, &episodeTo, &url, &dl, &quality, &spec,
 		&group, &pub, &fetched, &mirrorPath, &mirrorSize, &x.FeedName, &x.FeedPriority, &x.FeedColor); err != nil {
 		return nil, err
 	}
@@ -33,6 +33,10 @@ func scanRelease(row interface{ Scan(...any) error }) (*model.Release, error) {
 	if episode.Valid {
 		v := episode.Float64
 		x.Episode = &v
+	}
+	if episodeTo.Valid {
+		v := episodeTo.Float64
+		x.EpisodeTo = &v
 	}
 	x.URL = url.String
 	x.DownloadURL = dl.String
@@ -54,8 +58,8 @@ func scanRelease(row interface{ Scan(...any) error }) (*model.Release, error) {
 // anime_id：新值优先（COALESCE(excluded, 旧值)）——新一次匹配成功后覆盖旧的空值。
 func (s *Store) UpsertRelease(r *model.Release, dedup string) error {
 	_, err := s.DB.Exec(`
-		INSERT INTO release (feed_id, anime_id, title, episode, url, download_url, quality, spec, group_name, published_at, fetched_at, dedup)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO release (feed_id, anime_id, title, episode, episode_to, url, download_url, quality, spec, group_name, published_at, fetched_at, dedup)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT DO UPDATE SET
 			feed_id = CASE
 				WHEN (SELECT priority FROM feed WHERE id = excluded.feed_id) <
@@ -66,6 +70,7 @@ func (s *Store) UpsertRelease(r *model.Release, dedup string) error {
 			anime_id = COALESCE(excluded.anime_id, release.anime_id),
 			title = excluded.title,
 			episode = excluded.episode,
+			episode_to = excluded.episode_to,
 			url = excluded.url,
 			download_url = excluded.download_url,
 			quality = excluded.quality,
@@ -73,7 +78,7 @@ func (s *Store) UpsertRelease(r *model.Release, dedup string) error {
 			group_name = excluded.group_name,
 			published_at = excluded.published_at,
 			fetched_at = excluded.fetched_at`,
-		r.FeedID, nullI64(r.AnimeID), r.Title, nullF64(r.Episode), nullStr(r.URL), nullStr(r.DownloadURL),
+		r.FeedID, nullI64(r.AnimeID), r.Title, nullF64(r.Episode), nullF64(r.EpisodeTo), nullStr(r.URL), nullStr(r.DownloadURL),
 		nullStr(r.Quality), nullStr(r.Spec), nullStr(r.GroupName), nullStr(r.PublishedAt), NowStr(), dedup)
 	return err
 }
@@ -172,6 +177,11 @@ func (s *Store) BestEpisodes(animeID int64) ([]*model.EpisodeView, error) {
 		if rel.Episode != nil {
 			key = *rel.Episode
 			haveEp = true
+			if rel.EpisodeTo != nil {
+				// 合集：独立负键区 -(起点*1000+终点)-1，不与真实单集（起点）混组，
+				// 也不与"集数未知"(-1) 或第 0 集混组
+				key = -(*rel.Episode*1000 + *rel.EpisodeTo) - 1
+			}
 		}
 		g, ok := groups[key]
 		if !ok {
@@ -193,7 +203,12 @@ func (s *Store) BestEpisodes(animeID int64) ([]*model.EpisodeView, error) {
 	// 无集数的条目按出现顺序排在最后
 	var views []*model.EpisodeView
 	for _, k := range order {
-		views = append(views, &model.EpisodeView{Episode: k, Best: *groups[k].best, Alternatives: toRelSlice(groups[k].alt)})
+		views = append(views, &model.EpisodeView{
+			Episode:      k,
+			EpisodeTo:    groups[k].best.EpisodeTo, // 非空 = 合集区间，展示层据此显示 "X~Y 集"
+			Best:         *groups[k].best,
+			Alternatives: toRelSlice(groups[k].alt),
+		})
 	}
 	return views, nil
 }

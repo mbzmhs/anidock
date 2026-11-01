@@ -57,6 +57,7 @@ func (s *Store) migrate() error {
 		{"feed", "mirror", "INTEGER NOT NULL DEFAULT 0"},
 		{"release", "mirror_path", "TEXT"},
 		{"release", "mirror_size", "INTEGER NOT NULL DEFAULT 0"},
+		{"release", "episode_to", "REAL"}, // 合集区间终点（单集为 NULL）
 		{"admin_token", "permanent", "INTEGER NOT NULL DEFAULT 0"},
 		{"anime_cast", "lead", "INTEGER NOT NULL DEFAULT 0"},
 		{"feed", "site", "TEXT"},
@@ -69,6 +70,16 @@ func (s *Store) migrate() error {
 				return fmt.Errorf("迁移 %s.%s: %w", m.table, m.col, err)
 			}
 		}
+	}
+	// 唯一索引重建：加入合集区间维度（episode_to；单集 NULL 归一 -1）。
+	// 旧索引 (anime_id, episode, group_name) 会让"01-12 合集"与真实第 1 集
+	// 互相覆盖。重建必须放在 ALTER 补列之后（存量库此时才有该列）。
+	if _, err := s.DB.Exec(`DROP INDEX IF EXISTS uq_release_anime_ep_group`); err != nil {
+		return fmt.Errorf("重建唯一索引（旧）: %w", err)
+	}
+	if _, err := s.DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_release_anime_ep_group
+		ON release(anime_id, episode, group_name, IFNULL(episode_to, -1))`); err != nil {
+		return fmt.Errorf("重建唯一索引（含合集区间）: %w", err)
 	}
 	if err := s.mergeMirrorFeeds(); err != nil {
 		return fmt.Errorf("合并镜像源: %w", err)

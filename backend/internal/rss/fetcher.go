@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -450,12 +449,13 @@ func (f *Fetcher) fetchFeedURL(ctx context.Context, feed *model.Feed, u string, 
 	}
 
 	newCount := 0
+	now := time.Now().UTC()
 	for _, it := range items {
 		parsed := ParseTitle(it.Title)
 		if parsed.Group == "" {
 			parsed.Group = feed.Name
 		}
-		if bind != nil && seasonConflict(bind, it.Title) {
+		if bind != nil && seasonConflict(bind, it.Title, pubTimeOf(it.PubDate), now) {
 			log.Printf("[rss] feed %q 跳过季词冲突条目: %s", feed.Name, it.Title)
 			continue
 		}
@@ -471,6 +471,7 @@ func (f *Fetcher) fetchFeedURL(ctx context.Context, feed *model.Feed, u string, 
 			AnimeID:     animeID,
 			Title:       it.Title,
 			Episode:     parsed.Episode,
+			EpisodeTo:   parsed.EpisodeTo,
 			URL:         detailURL,
 			DownloadURL: downloadURL,
 			Quality:     parsed.Quality,
@@ -505,113 +506,8 @@ func (f *Fetcher) fetchFeedURL(ctx context.Context, feed *model.Feed, u string, 
 
 // ---------- 季词冲突过滤 ----------
 //
-// 订阅站的宽松匹配不会把季词当精确条件（实测某主流订阅站：关键词含"第三季"，
-// 同番第二季的旧文件照样命中）。对绑定到具体番剧的 per-show 源，旧季文件
-// 会与本季同集号文件在 (anime,episode,group) 唯一索引上互相覆盖，污染展示，
-// 抓取侧必须拦一道：条目的番剧季数与番剧自身季数明确不同 → 跳过该条目。
-
-var (
-	reSeasonCN  = regexp.MustCompile(`第\s*(\d{1,2}|[一二两三四五六七八九十]+)\s*[季期部]`)
-	reSeasonEn  = regexp.MustCompile(`(?i)\bseason\s?(\d{1,2})`)
-	reSeasonSP  = regexp.MustCompile(`(?i)\b([SP])(\d{1,2})\b`)
-	reSeasonRom = regexp.MustCompile(`[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]`)
-)
-
-var romNum = map[rune]int{'Ⅰ': 1, 'Ⅱ': 2, 'Ⅲ': 3, 'Ⅳ': 4, 'Ⅴ': 5, 'Ⅵ': 6, 'Ⅶ': 7, 'Ⅷ': 8, 'Ⅸ': 9, 'Ⅹ': 10}
-var cnDig  = map[rune]int{'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
-
-// seasonSet 从标题提取显式番剧季数集合（无季词 = 空集，S1 惯例不写季词）。
-func seasonSet(s string) map[int]bool {
-	out := map[int]bool{}
-	add := func(n int) {
-		if n > 0 && n < 100 {
-			out[n] = true
-		}
-	}
-	for _, m := range reSeasonCN.FindAllStringSubmatch(s, -1) {
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			add(n)
-			continue
-		}
-		add(cnNums(m[1]))
-	}
-	for _, m := range reSeasonEn.FindAllStringSubmatch(s, -1) {
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			add(n)
-		}
-	}
-	for _, m := range reSeasonSP.FindAllStringSubmatch(s, -1) {
-		if n, err := strconv.Atoi(m[2]); err == nil {
-			add(n)
-		}
-	}
-	for _, m := range reSeasonRom.FindAllString(s, -1) {
-		if r := []rune(m); len(r) == 1 {
-			if n, ok := romNum[r[0]]; ok {
-				add(n)
-			}
-		}
-	}
-	return out
-}
-
-// cnNums 中文数字（一~九十九）转 int。
-func cnNums(s string) int {
-	r := []rune(s)
-	for i, c := range r {
-		if c != '十' {
-			continue
-		}
-		tens := 1
-		if i > 0 {
-			if d, ok := cnDig[r[0]]; ok {
-				tens = d
-			} else {
-				return 0
-			}
-		}
-		if len(r) > i+1 {
-			if d, ok := cnDig[r[i+1]]; ok {
-				return tens*10 + d
-			}
-		}
-		return tens * 10
-	}
-	if len(r) == 1 {
-		if d, ok := cnDig[r[0]]; ok {
-			return d
-		}
-	}
-	return 0
-}
-
-// seasonConflict 番剧自身季数明确（仅一种），且条目季数与之无交集 → true。
-// 番剧无季词（S1）或条目无季词 → 不过滤。
-func seasonConflict(a *model.Anime, title string) bool {
-	want := map[int]bool{}
-	add := func(s string) {
-		for n := range seasonSet(s) {
-			want[n] = true
-		}
-	}
-	add(a.Title)
-	add(a.TitleOrig)
-	for _, al := range a.Aliases {
-		add(al)
-	}
-	if len(want) != 1 {
-		return false
-	}
-	var wantN int
-	for n := range want {
-		wantN = n
-	}
-	got := seasonSet(title)
-	if len(got) == 0 {
-		return false
-	}
-	return !got[wantN]
-}
+// 实现移至 season.go：与 disc 发现侧共用的统一季数提取器 SeasonSet，
+// 以及无季词条目（S1 老文件惯例不带季词）的发布时间/BDrip 兜底防线。
 
 // isMirrorableURL 镜像只收种子文件：http(s) 直链，且扩展名为 .torrent 或无扩展名
 // （无扩展名时由 mirrorOne 按响应 Content-Type 再判定）。明确的视频/压缩包等扩展名一律排除。
@@ -922,6 +818,18 @@ func NormalizePubDate(s string) string {
 		return t.UTC().Format(time.RFC3339)
 	}
 	return s
+}
+
+// pubTimeOf 原始 PubDate 字符串 → time（解析失败返回零值；季词兜底防线用）。
+func pubTimeOf(s string) time.Time {
+	n := NormalizePubDate(s)
+	if n == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339, n); err == nil {
+		return t
+	}
+	return time.Time{}
 }
 
 // StripHTML 去掉 description 里的 HTML 标签（提取链接前）。

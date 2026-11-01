@@ -65,15 +65,16 @@ func Discover(ctx context.Context, t Target, sites []Site, opt Options) (*Report
 				seen[key] = true
 				p := rss.ParseTitle(r.Title)
 				rep.Items = append(rep.Items, Item{
-					Title:   r.Title,
-					Link:    r.Link,
-					PubTime: parsePub(r.PubDate),
-					Query:   q,
-					Group:   p.Group,
-					Show:    p.Show,
-					Episode: p.Episode,
-					Quality: p.Quality,
-					Spec:    p.Spec,
+					Title:     r.Title,
+					Link:      r.Link,
+					PubTime:   parsePub(r.PubDate),
+					Query:     q,
+					Group:     p.Group,
+					Show:      p.Show,
+					Episode:   p.Episode,
+					EpisodeTo: p.EpisodeTo,
+					Quality:   p.Quality,
+					Spec:      p.Spec,
 				})
 				n++
 			}
@@ -349,15 +350,16 @@ func seedExpand(ctx context.Context, f *fetcher, site Site, t Target, opt Option
 			}
 			p := rss.ParseTitle(r.Title)
 			rep.Items = append(rep.Items, Item{
-				Title:   r.Title,
-				Link:    r.Link,
-				PubTime: parsePub(r.PubDate),
-				Query:   s,
-				Group:   p.Group,
-				Show:    p.Show,
-				Episode: p.Episode,
-				Quality: p.Quality,
-				Spec:    p.Spec,
+				Title:     r.Title,
+				Link:      r.Link,
+				PubTime:   parsePub(r.PubDate),
+				Query:     s,
+				Group:     p.Group,
+				Show:      p.Show,
+				Episode:   p.Episode,
+				EpisodeTo: p.EpisodeTo,
+				Quality:   p.Quality,
+				Spec:      p.Spec,
 			})
 			n++
 			added++

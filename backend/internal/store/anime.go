@@ -167,19 +167,20 @@ func (s *Store) fillAnimeSummary(list []*model.Anime) {
 		return
 	}
 	type rel struct {
-		animeID   int64
-		feedID    int64
-		priority  int
-		episode   float64
-		hasEp     bool
-		group     string
-		color     string
-		published string
+		animeID    int64
+		feedID     int64
+		priority   int
+		episode    float64
+		episodeTo  sql.NullFloat64
+		hasEp      bool
+		group      string
+		color      string
+		published  string
 	}
 	// 展示名统一用手动维护的 feed.name（不用 release.group_name——那是从 RSS 标题
 	// 【...】前缀自动解析的，会与用户填的源名不一致）
 	rows, err := s.DB.Query(`
-		SELECT r.anime_id, r.feed_id, f.priority, COALESCE(r.episode, -1),
+		SELECT r.anime_id, r.feed_id, f.priority, COALESCE(r.episode, -1), r.episode_to,
 			COALESCE(f.name,''), COALESCE(f.color,''), COALESCE(r.published_at,'')
 		FROM release r JOIN feed f ON f.id = r.feed_id
 		WHERE r.anime_id IS NOT NULL`)
@@ -190,7 +191,7 @@ func (s *Store) fillAnimeSummary(list []*model.Anime) {
 	rels := map[int64][]rel{}
 	for rows.Next() {
 		var x rel
-		if err := rows.Scan(&x.animeID, &x.feedID, &x.priority, &x.episode, &x.group, &x.color, &x.published); err != nil {
+		if err := rows.Scan(&x.animeID, &x.feedID, &x.priority, &x.episode, &x.episodeTo, &x.group, &x.color, &x.published); err != nil {
 			continue
 		}
 		rels[x.animeID] = append(rels[x.animeID], x)
@@ -217,6 +218,10 @@ func (s *Store) fillAnimeSummary(list []*model.Anime) {
 	for _, a := range list {
 		seenEp := map[float64]bool{} // 每集只算一次（多源同集不重复计数，与剧集页"每集取最优"口径一致）
 		for _, r := range rels[a.ID] {
+			// 合集（episode_to 非空）不进集数/最新集统计：起点集号不是"更新进度"
+			if r.episodeTo.Valid {
+				continue
+			}
 			if r.episode >= 0 {
 				if !seenEp[r.episode] {
 					seenEp[r.episode] = true

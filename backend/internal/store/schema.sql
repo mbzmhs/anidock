@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS release (
   anime_id      INTEGER,                  -- 未匹配则空（进"待归类"）
   title         TEXT NOT NULL,            -- RSS 原始标题
   episode       REAL,
+  episode_to    REAL,                     -- 合集区间终点（非空 = 多文件合集，episode 为起点）
   url           TEXT,                     -- 详情页链接（主操作「打开详情」）
   download_url  TEXT,                     -- 磁力/种子（可空）
   quality       TEXT,                     -- 解析出的画质（1080p/4K/...）
@@ -104,7 +105,8 @@ CREATE TABLE IF NOT EXISTS release (
   mirror_size   INTEGER NOT NULL DEFAULT 0 -- 镜像文件大小（字节）
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_release_feed_dedup ON release(feed_id, dedup);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_release_anime_ep_group ON release(anime_id, episode, group_name);
+-- 合集区间进唯一键（单集 episode_to 为 NULL 归一为 -1）：避免"01-12 合集"与
+-- 真实第 1 集在同组同键上互相覆盖。索引在 migrate() 里创建（存量库需先补列再建）。
 CREATE INDEX IF NOT EXISTS idx_release_anime_ep ON release(anime_id, episode);
 CREATE INDEX IF NOT EXISTS idx_release_pub ON release(published_at);
 

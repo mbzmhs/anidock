@@ -1,9 +1,52 @@
-package disc
+package rss
 
 // Code generated from OpenCC dictionaries (BYVoid/OpenCC, Apache-2.0):
-// TSCharacters.txt + TSPhrases.txt（繁体→简体）。勿手改。
+// TSCharacters.txt + TSPhrases.txt（繁体→简体）。
+import "strings"
 
-// tradToSimp 字符级映射（3151 条）
+// Simplify 繁体→简体：先词级、后字符级。
+// OpenCC 词典里目标含空格 = 多个候选译名（如 `龍鍾`→`龙钟 龙锺`），
+// 只取第一个候选整段替换——按拼接串处理会把"龙钟 龙锺"一起写入污染文本。
+func Simplify(s string) string {
+	for _, p := range tradToSimpPhrases {
+		if !strings.Contains(s, p[0]) {
+			continue
+		}
+		to := p[1]
+		if i := strings.IndexByte(to, ' '); i >= 0 {
+			to = to[:i]
+		}
+		s = strings.ReplaceAll(s, p[0], to)
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if m, ok := tradToSimp[r]; ok {
+			b.WriteRune(m)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// HalfWidth 全角→半角（含全角空格 U+3000）。
+func HalfWidth(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\u3000':
+			r = ' '
+		case r >= 0xFF01 && r <= 0xFF5E:
+			r -= 0xFEE0
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// tradToSimp 字符级映射（3152 条）
 var tradToSimp = map[rune]rune{
 	'㑯': '㑔', '㑳': '㑇', '㑶': '㐹', '㓨': '刾', '㗲': '𠵾', '㘚': '㘎',
 	'㜄': '㚯', '㜏': '㛣', '㜢': '𡞱', '㠏': '㟆', '㠣': '𫵷', '㥮': '㤘',

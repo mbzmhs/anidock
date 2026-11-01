@@ -33,6 +33,30 @@ async function load() {
 onMounted(load)
 watch(() => route.params.id, load)
 
+// 集数展示：合集（episode_to 非空）→ "X~Y 合集"；无集数 → —
+function fmtEp(x) {
+  if (x == null) return '—'
+  return Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10)
+}
+// 行排序：单集按集号降序；合集（episode_to 非空）不参与集号排序，
+// 固定排在全部单集之后（按起点、终点升序）——否则 "1~14 合集" 会插在 1 和 2 之间
+function epRowCompare(a, b) {
+  const ra = a.best, rb = b.best
+  const aCol = ra?.episode_to != null, bCol = rb?.episode_to != null
+  if (aCol && bCol) {
+    if (ra.episode !== rb.episode) return ra.episode - rb.episode
+    return ra.episode_to - rb.episode_to
+  }
+  if (aCol) return 1
+  if (bCol) return -1
+  return (rb?.episode ?? -1) - (ra?.episode ?? -1)
+}
+function epCell(r) {
+  if (!r) return '—'
+  if (r.episode_to != null) return `${fmtEp(r.episode)}~${fmtEp(r.episode_to)} 合集`
+  return fmtEp(r.episode)
+}
+
 // 下载链接无感切换：有本地镜像则优先 /mirror/…，否则回退原始 download_url
 function dlHref(r) {
   if (!r) return ''
@@ -200,11 +224,11 @@ function copyRss(e) {
           </thead>
           <tbody>
             <template
-              v-for="e in [...episodes].sort((a, b) => (b.best?.episode ?? -1) - (a.best?.episode ?? -1))"
+              v-for="e in [...episodes].sort(epRowCompare)"
               :key="e.best?.id"
             >
               <tr>
-                <td class="c-ep ep">{{ e.best?.episode ?? '—' }}</td>
+                <td class="c-ep ep">{{ epCell(e.best) }}</td>
                 <td>
                   <FeedBadge :name="e.best?.feed_name || e.best?.group_name" :color="e.best?.feed_color" />
                 </td>
